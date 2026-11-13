@@ -27,7 +27,7 @@
     "event_id": "ch-004",
     "entity_key": "WEB",
     "op": "upsert",
-    "seq": 4,
+    "seq": 5,
     "event_time": "2026-01-07T01:00:00Z",
     "payload": {"label": "官网改版", "active": true}
   },
@@ -35,8 +35,16 @@
     "event_id": "ch-005",
     "entity_key": "POS",
     "op": "delete",
-    "seq": 5,
+    "seq": 6,
     "event_time": "2026-01-08T03:00:00Z",
     "payload": null
+  },
+  {
+    "event_id": "ch-006",
+    "entity_key": "WEB",
+    "op": "upsert",
+    "seq": 4,
+    "event_time": "2026-01-06T09:00:00Z",
+    "payload": {"label": "官网移动版", "active": true}
   }
 ]

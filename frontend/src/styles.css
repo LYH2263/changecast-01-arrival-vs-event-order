@@ -269,3 +269,43 @@ input:focus, select:focus, textarea:focus {
   .content { width: calc(100% - 1.25rem); }
   .nav a { padding: 0.32rem 0.5rem; font-size: 0.85rem; }
 }
+
+.checklist {
+  list-style: none;
+  margin: 0.35rem 0 0;
+  padding: 0;
+}
+
+.checklist li {
+  padding: 0.32rem 0;
+  border-bottom: 1px dashed var(--line);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.checklist li:last-child { border-bottom: 0; }
+
+.col-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+  gap: 1rem;
+  margin-top: 0.75rem;
+}
+
+.col-box {
+  border: 1px solid var(--line);
+  background: #fff;
+  padding: 0.75rem 0.85rem;
+  min-width: 0;
+}
+
+.col-box h4 {
+  margin: 0 0 0.4rem;
+  font-family: "Fraunces", "Songti SC", serif;
+  font-size: 0.98rem;
+}
+
+.col-box table { font-size: 0.84rem; }
+.col-box td, .col-box th { padding: 0.32rem 0.25rem; }
+
+table { display: block; overflow-x: auto; }

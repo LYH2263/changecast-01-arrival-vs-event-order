@@ -15,6 +15,8 @@
         <router-link to="/projections">投影快照</router-link>
         <router-link to="/batches">应用批次</router-link>
         <router-link to="/events">事件留痕</router-link>
+        <router-link to="/compare">应用序对照</router-link>
+        <router-link to="/verify">同源核验</router-link>
         <router-link to="/buffer">缓冲区</router-link>
         <router-link to="/settings">设置</router-link>
       </nav>

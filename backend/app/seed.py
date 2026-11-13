@@ -39,6 +39,16 @@ def _now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
+def _columns(conn, table: str) -> set[str]:
+    return {r["name"] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+
+
+def _ensure_column(conn, table: str, name: str, ddl: str) -> None:
+    """Additive migration for existing docker volumes."""
+    if name not in _columns(conn, table):
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {ddl}")
+
+
 def init_db() -> None:
     import json
 
@@ -56,6 +66,8 @@ def init_db() -> None:
                 fixture TEXT NOT NULL,
                 enabled INTEGER NOT NULL DEFAULT 1,
                 watermark_seq INTEGER NOT NULL DEFAULT 0,
+                apply_order TEXT NOT NULL DEFAULT 'by_seq'
+                    CHECK(apply_order IN ('by_seq', 'by_arrival')),
                 created_at TEXT NOT NULL
             );
             CREATE TABLE IF NOT EXISTS project_batches(
@@ -63,10 +75,14 @@ def init_db() -> None:
                 batch_no TEXT NOT NULL UNIQUE,
                 stream_id INTEGER NOT NULL,
                 status TEXT NOT NULL,
+                kind TEXT NOT NULL DEFAULT 'project',
+                apply_order TEXT NOT NULL DEFAULT 'by_seq',
                 source_events INTEGER NOT NULL,
                 applied_upsert INTEGER NOT NULL,
                 applied_delete INTEGER NOT NULL,
                 skipped_duplicate INTEGER NOT NULL,
+                failed_events INTEGER NOT NULL DEFAULT 0,
+                held_events INTEGER NOT NULL DEFAULT 0,
                 projected_alive INTEGER NOT NULL,
                 projected_deleted INTEGER NOT NULL,
                 max_seq INTEGER NOT NULL,
@@ -95,8 +111,25 @@ def init_db() -> None:
                 op TEXT NOT NULL,
                 seq INTEGER NOT NULL,
                 event_time TEXT NOT NULL,
+                arrival_index INTEGER NOT NULL DEFAULT 0,
+                applied_index INTEGER NOT NULL DEFAULT 0,
+                apply_order TEXT NOT NULL DEFAULT 'by_seq',
                 result TEXT NOT NULL,
+                payload_json TEXT,
                 created_at TEXT NOT NULL,
+                FOREIGN KEY(batch_id) REFERENCES project_batches(id),
+                FOREIGN KEY(stream_id) REFERENCES project_streams(id)
+            );
+            CREATE TABLE IF NOT EXISTS batch_projection_rows(
+                id INTEGER PRIMARY KEY,
+                batch_id INTEGER NOT NULL,
+                stream_id INTEGER NOT NULL,
+                entity_key TEXT NOT NULL,
+                payload_json TEXT,
+                applied_seq INTEGER NOT NULL,
+                applied_event_id TEXT NOT NULL,
+                deleted INTEGER NOT NULL DEFAULT 0,
+                UNIQUE(batch_id, entity_key),
                 FOREIGN KEY(batch_id) REFERENCES project_batches(id),
                 FOREIGN KEY(stream_id) REFERENCES project_streams(id)
             );
@@ -108,9 +141,26 @@ def init_db() -> None:
                 op TEXT NOT NULL,
                 seq INTEGER NOT NULL,
                 event_time TEXT NOT NULL,
+                arrival_index INTEGER NOT NULL DEFAULT 0,
                 payload_json TEXT,
                 buffered_at TEXT NOT NULL,
                 status TEXT NOT NULL DEFAULT 'open',
+                drained_batch_id INTEGER,
+                note TEXT,
+                FOREIGN KEY(stream_id) REFERENCES project_streams(id)
+            );
+            CREATE TABLE IF NOT EXISTS policy_switches(
+                id INTEGER PRIMARY KEY,
+                stream_id INTEGER NOT NULL,
+                from_order TEXT NOT NULL,
+                to_order TEXT NOT NULL,
+                buffered_settled INTEGER NOT NULL DEFAULT 0,
+                buffered_failed INTEGER NOT NULL DEFAULT 0,
+                running_failed INTEGER NOT NULL DEFAULT 0,
+                drain_batch_id INTEGER,
+                rebuild_batch_id INTEGER,
+                note TEXT,
+                created_at TEXT NOT NULL,
                 FOREIGN KEY(stream_id) REFERENCES project_streams(id)
             );
             CREATE TABLE IF NOT EXISTS settings(
@@ -119,6 +169,22 @@ def init_db() -> None:
             );
             """
         )
+
+        # Existing volumes from the base snapshot need additive columns.
+        _ensure_column(conn, "project_streams", "apply_order", "apply_order TEXT NOT NULL DEFAULT 'by_seq'")
+        _ensure_column(conn, "project_batches", "kind", "kind TEXT NOT NULL DEFAULT 'project'")
+        _ensure_column(conn, "project_batches", "apply_order", "apply_order TEXT NOT NULL DEFAULT 'by_seq'")
+        _ensure_column(conn, "project_batches", "failed_events", "failed_events INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(conn, "project_batches", "held_events", "held_events INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(conn, "policy_switches", "buffered_settled", "buffered_settled INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(conn, "applied_events", "arrival_index", "arrival_index INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(conn, "applied_events", "applied_index", "applied_index INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(conn, "applied_events", "apply_order", "apply_order TEXT NOT NULL DEFAULT 'by_seq'")
+        _ensure_column(conn, "applied_events", "payload_json", "payload_json TEXT")
+        _ensure_column(conn, "ooo_buffer", "arrival_index", "arrival_index INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(conn, "ooo_buffer", "drained_batch_id", "drained_batch_id INTEGER")
+        _ensure_column(conn, "ooo_buffer", "note", "note TEXT")
+
         if conn.execute("SELECT COUNT(*) c FROM project_streams").fetchone()["c"] == 0:
             now = _now()
             for s in STREAM_SEEDS:
@@ -126,8 +192,8 @@ def init_db() -> None:
                     """
                     INSERT INTO project_streams(
                         code, title, domain, entity_key_name, payload_fields_json,
-                        fixture, enabled, watermark_seq, created_at
-                    ) VALUES (?,?,?,?,?,?,?,?,?)
+                        fixture, enabled, watermark_seq, apply_order, created_at
+                    ) VALUES (?,?,?,?,?,?,?,?,?,?)
                     """,
                     (
                         s["code"],
@@ -138,6 +204,7 @@ def init_db() -> None:
                         s["fixture"],
                         s["enabled"],
                         0,
+                        "by_seq",
                         now,
                     ),
                 )

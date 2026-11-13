@@ -6,6 +6,8 @@ import Projections from './pages/Projections.vue'
 import Batches from './pages/Batches.vue'
 import Events from './pages/Events.vue'
 import Buffer from './pages/Buffer.vue'
+import Compare from './pages/Compare.vue'
+import Verify from './pages/Verify.vue'
 import Settings from './pages/Settings.vue'
 
 export default createRouter({
@@ -18,6 +20,8 @@ export default createRouter({
     { path: '/batches', component: Batches },
     { path: '/events', component: Events },
     { path: '/buffer', component: Buffer },
+    { path: '/compare', component: Compare },
+    { path: '/verify', component: Verify },
     { path: '/settings', component: Settings },
   ],
 })

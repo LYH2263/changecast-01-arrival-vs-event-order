@@ -29,3 +29,10 @@ def set_watermark(conn: sqlite3.Connection, stream_id: int, watermark_seq: int) 
         "UPDATE project_streams SET watermark_seq=? WHERE id=?",
         (watermark_seq, stream_id),
     )
+
+
+def set_apply_order(conn: sqlite3.Connection, stream_id: int, apply_order: str) -> None:
+    conn.execute(
+        "UPDATE project_streams SET apply_order=? WHERE id=?",
+        (apply_order, stream_id),
+    )
